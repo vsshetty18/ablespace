@@ -4,16 +4,14 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Response } from 'express';
 
-// Catches every exception thrown anywhere in the app (both HttpException
-// instances like NotFoundException, and unexpected raw errors) and
-// normalizes them into one consistent JSON error shape. Without this,
-// an unhandled error would leak a raw stack trace to the client instead
-// of a clean, predictable response.
 @Catch()
 export class HttpExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger(HttpExceptionFilter.name);
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -27,6 +25,15 @@ export class HttpExceptionFilter implements ExceptionFilter {
     const message = isHttpException
       ? exception.getResponse()
       : 'Internal server error';
+
+    // Log the FULL error server-side, regardless of what we send the client.
+    // Without this, unexpected errors (like a database connection failure)
+    // are invisible in the logs — the client just sees a generic 500.
+    if (!isHttpException) {
+      this.logger.error(
+        exception instanceof Error ? exception.stack : exception,
+      );
+    }
 
     response.status(status).json({
       statusCode: status,
